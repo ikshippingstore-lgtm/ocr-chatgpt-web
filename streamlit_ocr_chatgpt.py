@@ -2,14 +2,13 @@ import streamlit as st
 from PIL import Image
 import easyocr
 import openai
-import io
 
 # ---------------- CONFIG ----------------
 # OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Initialize EasyOCR reader
-reader = easyocr.Reader(['en'])
+reader = easyocr.Reader(['en'], gpu=False)
 
 # Initialize session state
 if "accumulated_prompt" not in st.session_state:
@@ -17,25 +16,17 @@ if "accumulated_prompt" not in st.session_state:
 if "additional_prompt" not in st.session_state:
     st.session_state.additional_prompt = ""
 
-# ---------------- IMAGE FUNCTIONS ----------------
-def resize_image(img, max_width=1000):
-    """Resize image proportionally to max_width"""
-    if img.width > max_width:
-        w_percent = max_width / float(img.width)
-        h_size = int(img.height * w_percent)
-        return img.resize((max_width, h_size), Image.Resampling.LANCZOS)
-    return img
-
+# ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
-    """Perform OCR on PIL Image using EasyOCR"""
-    img = resize_image(img)
-    img_bytes = io.BytesIO()
-    img.save(img_bytes, format='PNG')
-    img_bytes = img_bytes.getvalue()
-    result = reader.readtext(img_bytes, detail=0)
-    return "\n".join(result)
+    try:
+        img_array = img.convert('RGB')
+        text_list = reader.readtext(np.array(img_array), detail=0)
+        return "\n".join(text_list)
+    except Exception as e:
+        return f"Error OCRing image: {e}"
 
 def process_uploaded_images(uploaded_files):
+    import numpy as np
     for uploaded_file in uploaded_files:
         try:
             img = Image.open(uploaded_file)
@@ -59,15 +50,15 @@ def send_to_chatgpt():
 
     st.markdown("--- Sending Prompt to ChatGPT ---")
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": st.session_state.accumulated_prompt}],
             temperature=0.7
         )
-        chat_response = response['choices'][0]['message']['content'].strip()
+        chat_response = response.choices[0].message.content.strip()
         st.markdown("**ChatGPT Response:**")
         st.text(chat_response)
-        st.session_state.accumulated_prompt = ""  # Clear after sending
+        st.session_state.accumulated_prompt = ""  # Clear buffer after sending
     except Exception as e:
         st.error(f"Error contacting ChatGPT: {e}")
 

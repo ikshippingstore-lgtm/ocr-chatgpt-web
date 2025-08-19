@@ -1,38 +1,26 @@
 import streamlit as st
 from PIL import Image
-import easyocr
-import numpy as np
+import pytesseract
 import openai
 
 # ---------------- CONFIG ----------------
-# Initialize EasyOCR Reader (English)
-reader = easyocr.Reader(['en'], gpu=False)
+# Set Tesseract path (if running locally, adjust path; for Streamlit Cloud, Tesseract must be installed separately)
+# For most online deploys like Streamlit Cloud, Tesseract might not be available, you can keep this for local testing
+# pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
 
-# OpenAI API key from Streamlit Secrets
+# OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Session state buffers
+# Initialize accumulated prompt in session state
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
 if "additional_prompt" not in st.session_state:
     st.session_state.additional_prompt = ""
 
 # ---------------- OCR FUNCTION ----------------
-def ocr_image(img: Image.Image):
+def ocr_image(img):
     try:
-        # Convert to RGB
-        img = img.convert('RGB')
-
-        # Resize for faster OCR if image is wide
-        max_width = 800
-        if img.width > max_width:
-            ratio = max_width / img.width
-            new_size = (max_width, int(img.height * ratio))
-            img = img.resize(new_size)
-
-        # EasyOCR
-        text_list = reader.readtext(np.array(img), detail=0)
-        return "\n".join(text_list)
+        return pytesseract.image_to_string(img)
     except Exception as e:
         return f"Error OCRing image: {e}"
 
@@ -92,4 +80,16 @@ if uploaded_files:
 
 # Additional prompt
 st.session_state.additional_prompt = st.text_area(
-    "Add Text / Prompt Befor
+    "Add Text / Prompt Before Sending",
+    value=st.session_state.additional_prompt,
+    height=100
+)
+
+# Buttons
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("Send to ChatGPT"):
+        send_to_chatgpt()
+with col2:
+    if st.button("Clear All"):
+        clear_all()

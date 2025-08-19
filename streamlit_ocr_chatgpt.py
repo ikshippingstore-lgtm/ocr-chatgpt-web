@@ -1,25 +1,28 @@
 import streamlit as st
-from PIL import Image, ImageGrab
-import pytesseract
+from PIL import Image
+import easyocr
 import openai
-import tempfile
-import os
+import numpy as np
 
 # ---------------- CONFIG ----------------
-# Set Tesseract path for Streamlit Cloud or local
-pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"  # Change if running locally on Windows
-
 # OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Global buffer for accumulated prompt
+# Initialize EasyOCR reader
+reader = easyocr.Reader(['en'])
+
+# Initialize session state
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
+if "additional_prompt" not in st.session_state:
+    st.session_state.additional_prompt = ""
 
 # ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
     try:
-        text = pytesseract.image_to_string(img)
+        img_array = np.array(img)
+        results = reader.readtext(img_array)
+        text = "\n".join([res[1] for res in results])
         return text
     except Exception as e:
         return f"Error OCRing image: {e}"
@@ -67,7 +70,7 @@ def clear_all():
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App")
+st.title("📸 OCR + ChatGPT Web App (EasyOCR)")
 
 # File uploader (multi)
 uploaded_files = st.file_uploader(
@@ -77,20 +80,6 @@ uploaded_files = st.file_uploader(
 )
 if uploaded_files:
     process_uploaded_images(uploaded_files)
-
-# Optional: Paste from clipboard (only works locally)
-if st.button("Paste image from clipboard (local only)"):
-    try:
-        img = ImageGrab.grabclipboard()
-        if isinstance(img, Image.Image):
-            text = ocr_image(img)
-            st.session_state.accumulated_prompt += text + "\n"
-            st.markdown(f"**--- OCR for Clipboard Image ---**")
-            st.text(text)
-        else:
-            st.warning("Clipboard does not contain an image.")
-    except Exception as e:
-        st.error(f"Error reading clipboard image: {e}")
 
 # Additional prompt
 st.session_state.additional_prompt = st.text_area(

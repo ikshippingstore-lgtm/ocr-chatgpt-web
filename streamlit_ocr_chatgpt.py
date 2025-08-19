@@ -1,33 +1,37 @@
 import streamlit as st
 from PIL import Image
-import pytesseract
+import easyocr
 import openai
+import numpy as np
 
 # ---------------- CONFIG ----------------
-# Set Tesseract path (if running locally, adjust path; for Streamlit Cloud, Tesseract must be installed separately)
-# For most online deploys like Streamlit Cloud, Tesseract might not be available, you can keep this for local testing
-# pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"
+st.set_page_config(page_title="OCR + ChatGPT Web App", layout="wide")
 
 # OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Initialize accumulated prompt in session state
+# Session state buffer for accumulated prompt
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
 if "additional_prompt" not in st.session_state:
     st.session_state.additional_prompt = ""
 
+# Initialize EasyOCR reader (English)
+reader = easyocr.Reader(['en'], gpu=False)  # gpu=True if your environment supports GPU
+
 # ---------------- OCR FUNCTION ----------------
-def ocr_image(img):
+def ocr_image(img: Image.Image):
     try:
-        return pytesseract.image_to_string(img)
+        img_array = np.array(img)
+        text_list = reader.readtext(img_array, detail=0)  # detail=0 returns only text
+        return "\n".join(text_list)
     except Exception as e:
         return f"Error OCRing image: {e}"
 
 def process_uploaded_images(uploaded_files):
     for uploaded_file in uploaded_files:
         try:
-            img = Image.open(uploaded_file)
+            img = Image.open(uploaded_file).convert("RGB")
             text = ocr_image(img)
             st.session_state.accumulated_prompt += text + "\n"
             st.markdown(f"**--- OCR for {uploaded_file.name} ---**")
@@ -67,9 +71,9 @@ def clear_all():
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App")
+st.title("📸 OCR + ChatGPT Web App (Online Friendly)")
 
-# File uploader (multi)
+# File uploader
 uploaded_files = st.file_uploader(
     "Select images to OCR (PNG, JPG, JPEG, BMP, TIFF)",
     type=["png", "jpg", "jpeg", "bmp", "tiff"],
@@ -78,10 +82,10 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     process_uploaded_images(uploaded_files)
 
-# Additional prompt
+# Additional prompt text
 st.session_state.additional_prompt = st.text_area(
     "Add Text / Prompt Before Sending",
-    value=st.session_state.additional_prompt,
+    value=st.session_state.get("additional_prompt", ""),
     height=100
 )
 

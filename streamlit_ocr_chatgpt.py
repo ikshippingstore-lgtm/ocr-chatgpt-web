@@ -1,29 +1,27 @@
 import streamlit as st
 from PIL import Image
-import easyocr
+import pytesseract
 import openai
-import numpy as np
+import os
 
 # ---------------- CONFIG ----------------
-# OpenAI API key from Streamlit secrets
+# Set Tesseract path (adjust for your system)
+# Local Windows:
+# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# Streamlit Cloud/Linux:
+pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
+
+# OpenAI API Key from secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Initialize EasyOCR reader
-reader = easyocr.Reader(['en'])
-
-# Initialize session state
+# Global buffer for accumulated prompt
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
-if "additional_prompt" not in st.session_state:
-    st.session_state.additional_prompt = ""
 
 # ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
     try:
-        img_array = np.array(img)
-        results = reader.readtext(img_array)
-        text = "\n".join([res[1] for res in results])
-        return text
+        return pytesseract.image_to_string(img)
     except Exception as e:
         return f"Error OCRing image: {e}"
 
@@ -59,7 +57,7 @@ def send_to_chatgpt():
         chat_response = response['choices'][0]['message']['content'].strip()
         st.markdown("**ChatGPT Response:**")
         st.text(chat_response)
-        st.session_state.accumulated_prompt = ""  # Clear buffer after sending
+        st.session_state.accumulated_prompt = ""  # Clear buffer
     except Exception as e:
         st.error(f"Error contacting ChatGPT: {e}")
 
@@ -70,7 +68,7 @@ def clear_all():
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App (EasyOCR)")
+st.title("📸 OCR + ChatGPT Web App")
 
 # File uploader (multi)
 uploaded_files = st.file_uploader(
@@ -89,12 +87,10 @@ st.session_state.additional_prompt = st.text_area(
 )
 
 # Buttons
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     if st.button("Send to ChatGPT"):
         send_to_chatgpt()
 with col2:
     if st.button("Clear All"):
         clear_all()
-with col3:
-    st.write("")  # empty column for spacing

@@ -1,44 +1,50 @@
-# streamlit_ocr_chatgpt.py
 import streamlit as st
 from PIL import Image
 import easyocr
-import numpy as np
 import openai
+import io
 
 # ---------------- CONFIG ----------------
-# Initialize EasyOCR once
+# Initialize EasyOCR Reader once (CPU only for Streamlit Cloud)
 reader = easyocr.Reader(['en'], gpu=False)
 
 # OpenAI API key from Streamlit secrets
-# Make sure to add your key in Streamlit Cloud: Secrets -> OPENAI_API_KEY
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Initialize session state
+# Global accumulated prompt
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
-if "additional_prompt" not in st.session_state:
-    st.session_state.additional_prompt = ""
 
-# ---------------- OCR FUNCTION ----------------
-def ocr_image(uploaded_file):
+# ---------------- HELPER FUNCTIONS ----------------
+def resize_image(img, max_width=1000):
+    """Resize image proportionally to max_width"""
+    if img.width > max_width:
+        w_percent = max_width / float(img.width)
+        h_size = int(img.height * w_percent)
+        return img.resize((max_width, h_size), Image.ANTIALIAS)
+    return img
+
+def ocr_image(img):
+    """Perform OCR using EasyOCR"""
+    img = resize_image(img)
     try:
-        img = Image.open(uploaded_file).convert("RGB")
-        img_array = np.array(img)
-        result = reader.readtext(img_array, detail=0)
+        result = reader.readtext(np.array(img), detail=0)
         return "\n".join(result)
     except Exception as e:
         return f"Error OCRing image: {e}"
 
 def process_uploaded_images(uploaded_files):
     for uploaded_file in uploaded_files:
-        text = ocr_image(uploaded_file)
-        st.session_state.accumulated_prompt += text + "\n"
-        st.markdown(f"**--- OCR for {uploaded_file.name} ---**")
-        st.text(text)
+        try:
+            img = Image.open(uploaded_file).convert("RGB")
+            text = ocr_image(img)
+            st.session_state.accumulated_prompt += text + "\n"
+            st.markdown(f"**--- OCR for {uploaded_file.name} ---**")
+            st.text(text)
+        except Exception as e:
+            st.error(f"Error processing {uploaded_file.name}: {e}")
 
-# ---------------- CHATGPT FUNCTION ----------------
 def send_to_chatgpt():
-    # Add additional prompt
     additional_text = st.session_state.additional_prompt.strip()
     if additional_text:
         st.session_state.accumulated_prompt += additional_text + "\n"
@@ -58,30 +64,30 @@ def send_to_chatgpt():
         chat_response = response['choices'][0]['message']['content'].strip()
         st.markdown("**ChatGPT Response:**")
         st.text(chat_response)
-        # Clear after sending
-        st.session_state.accumulated_prompt = ""
+        st.session_state.accumulated_prompt = ""  # Clear buffer after sending
     except Exception as e:
         st.error(f"Error contacting ChatGPT: {e}")
 
-# ---------------- CLEAR FUNCTION ----------------
 def clear_all():
     st.session_state.accumulated_prompt = ""
     st.session_state.additional_prompt = ""
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 EasyOCR + ChatGPT Web App")
+st.title("📸 OCR + ChatGPT Web App (Faster Online)")
 
-# File uploader (multi)
+# File uploader
 uploaded_files = st.file_uploader(
     "Select images to OCR (PNG, JPG, JPEG, BMP, TIFF)",
     type=["png", "jpg", "jpeg", "bmp", "tiff"],
     accept_multiple_files=True
 )
-if uploaded_files:
-    process_uploaded_images(uploaded_files)
 
-# Additional prompt
+if uploaded_files:
+    with st.spinner("Processing images..."):
+        process_uploaded_images(uploaded_files)
+
+# Additional prompt text
 st.session_state.additional_prompt = st.text_area(
     "Add Text / Prompt Before Sending",
     value=st.session_state.get("additional_prompt", ""),
@@ -89,10 +95,12 @@ st.session_state.additional_prompt = st.text_area(
 )
 
 # Buttons
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("Send to ChatGPT"):
         send_to_chatgpt()
 with col2:
     if st.button("Clear All"):
         clear_all()
+with col3:
+    st.write("")  # empty column for spacing

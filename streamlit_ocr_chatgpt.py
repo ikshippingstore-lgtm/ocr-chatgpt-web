@@ -1,80 +1,111 @@
-# streamlit_ocr_chatgpt.py
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageGrab
 import pytesseract
 import openai
-import io
+import tempfile
+import os
 
-# ---------- CONFIG ----------
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"  # Adjust for your server
-openai.api_key = "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"  # Keep this secret, do NOT expose in frontend
+# ---------------- CONFIG ----------------
+# Set Tesseract path for Streamlit Cloud or local
+pytesseract.pytesseract.tesseract_cmd = r"/usr/bin/tesseract"  # Change if running locally on Windows
 
-# ---------- APP STATE ----------
-if 'accumulated_prompt' not in st.session_state:
-    st.session_state['accumulated_prompt'] = ""
+# OpenAI API key from Streamlit secrets
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# ---------- FUNCTIONS ----------
-def ocr_image(img: Image.Image) -> str:
+# Global buffer for accumulated prompt
+if "accumulated_prompt" not in st.session_state:
+    st.session_state.accumulated_prompt = ""
+
+# ---------------- OCR FUNCTION ----------------
+def ocr_image(img):
     try:
-        return pytesseract.image_to_string(img)
+        text = pytesseract.image_to_string(img)
+        return text
     except Exception as e:
         return f"Error OCRing image: {e}"
 
-def send_to_chatgpt(prompt: str) -> str:
+def process_uploaded_images(uploaded_files):
+    for uploaded_file in uploaded_files:
+        try:
+            img = Image.open(uploaded_file)
+            text = ocr_image(img)
+            st.session_state.accumulated_prompt += text + "\n"
+            st.markdown(f"**--- OCR for {uploaded_file.name} ---**")
+            st.text(text)
+        except Exception as e:
+            st.error(f"Error processing {uploaded_file.name}: {e}")
+
+# ---------------- CHATGPT FUNCTION ----------------
+def send_to_chatgpt():
+    additional_text = st.session_state.additional_prompt.strip()
+    if additional_text:
+        st.session_state.accumulated_prompt += additional_text + "\n"
+        st.session_state.additional_prompt = ""
+
+    if not st.session_state.accumulated_prompt.strip():
+        st.warning("No text to send. Add images or text first.")
+        return
+
+    st.markdown("--- Sending Prompt to ChatGPT ---")
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": st.session_state.accumulated_prompt}],
             temperature=0.7
         )
-        return response['choices'][0]['message']['content'].strip()
+        chat_response = response['choices'][0]['message']['content'].strip()
+        st.markdown("**ChatGPT Response:**")
+        st.text(chat_response)
+        st.session_state.accumulated_prompt = ""  # Clear buffer after sending
     except Exception as e:
-        return f"Error contacting ChatGPT: {e}"
+        st.error(f"Error contacting ChatGPT: {e}")
 
-# ---------- STREAMLIT UI ----------
-st.title("OCR + ChatGPT Web Tool")
-st.markdown("Upload images or paste them as files, add extra prompt text, and send to ChatGPT.")
+# ---------------- CLEAR FUNCTION ----------------
+def clear_all():
+    st.session_state.accumulated_prompt = ""
+    st.session_state.additional_prompt = ""
+    st.experimental_rerun()
 
-# File uploader (multiple images)
-uploaded_files = st.file_uploader("Upload Images", type=["png","jpg","jpeg","bmp","tiff"], accept_multiple_files=True)
+# ---------------- STREAMLIT LAYOUT ----------------
+st.title("📸 OCR + ChatGPT Web App")
 
-for uploaded_file in uploaded_files:
-    img = Image.open(uploaded_file)
-    text = ocr_image(img)
-    st.session_state['accumulated_prompt'] += text + "\n"
-    st.markdown(f"**--- OCR for {uploaded_file.name} ---**")
-    st.text(text)
+# File uploader (multi)
+uploaded_files = st.file_uploader(
+    "Select images to OCR (PNG, JPG, JPEG, BMP, TIFF)",
+    type=["png", "jpg", "jpeg", "bmp", "tiff"],
+    accept_multiple_files=True
+)
+if uploaded_files:
+    process_uploaded_images(uploaded_files)
 
-# Additional text box
-additional_text = st.text_area("Add extra prompt text (optional)")
+# Optional: Paste from clipboard (only works locally)
+if st.button("Paste image from clipboard (local only)"):
+    try:
+        img = ImageGrab.grabclipboard()
+        if isinstance(img, Image.Image):
+            text = ocr_image(img)
+            st.session_state.accumulated_prompt += text + "\n"
+            st.markdown(f"**--- OCR for Clipboard Image ---**")
+            st.text(text)
+        else:
+            st.warning("Clipboard does not contain an image.")
+    except Exception as e:
+        st.error(f"Error reading clipboard image: {e}")
+
+# Additional prompt
+st.session_state.additional_prompt = st.text_area(
+    "Add Text / Prompt Before Sending",
+    value=st.session_state.get("additional_prompt", ""),
+    height=100
+)
 
 # Buttons
 col1, col2, col3 = st.columns(3)
-
 with col1:
     if st.button("Send to ChatGPT"):
-        if additional_text:
-            st.session_state['accumulated_prompt'] += additional_text + "\n"
-        if st.session_state['accumulated_prompt'].strip() == "":
-            st.warning("No text to send. Add images or prompt text first.")
-        else:
-            st.markdown("**--- Sending Prompt to ChatGPT ---**")
-            chat_response = send_to_chatgpt(st.session_state['accumulated_prompt'])
-            st.text(chat_response)
-            st.session_state['accumulated_prompt'] = ""  # Clear after sending
-
+        send_to_chatgpt()
 with col2:
     if st.button("Clear All"):
-        st.session_state['accumulated_prompt'] = ""
-        st.experimental_rerun()
-
+        clear_all()
 with col3:
-    if st.button("Copy All OCR + Prompt"):
-        import pyperclip
-        pyperclip.copy(st.session_state['accumulated_prompt'])
-        st.success("Copied to clipboard!")
-
-# Display accumulated prompt for reference
-if st.session_state['accumulated_prompt']:
-    st.markdown("### Accumulated Prompt (preview)")
-    st.text(st.session_state['accumulated_prompt'])
+    st.write("")  # empty column for spacing

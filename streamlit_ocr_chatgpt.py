@@ -1,19 +1,17 @@
+# streamlit_easyocr_chatgpt.py
 import streamlit as st
 from PIL import Image
-import pytesseract
+import easyocr
 import openai
-import os
-import tempfile
 
 # ---------------- CONFIG ----------------
-# Point pytesseract to the binary included in the repo
-TESSERACT_PATH = os.path.join(os.getcwd(), "tesseract_bin", "tesseract")
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-
-# OpenAI key from Streamlit secrets
+# OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Session state
+# Initialize EasyOCR reader (English only for speed)
+reader = easyocr.Reader(['en'], gpu=False)
+
+# Initialize session state buffers
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
 if "additional_prompt" not in st.session_state:
@@ -22,7 +20,9 @@ if "additional_prompt" not in st.session_state:
 # ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
     try:
-        return pytesseract.image_to_string(img)
+        result = reader.readtext(img)
+        text = "\n".join([line[1] for line in result])
+        return text
     except Exception as e:
         return f"Error OCRing image: {e}"
 
@@ -69,7 +69,7 @@ def clear_all():
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App")
+st.title("📸 EasyOCR + ChatGPT Web App")
 
 # File uploader (multi)
 uploaded_files = st.file_uploader(

@@ -2,21 +2,21 @@ import streamlit as st
 from PIL import Image
 import pytesseract
 import openai
-import os
 
 # ---------------- CONFIG ----------------
-# Set Tesseract path (adjust for your system)
-# Local Windows:
-# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-# Streamlit Cloud/Linux:
+# Use Tesseract on Streamlit Cloud
+# For Linux (Cloud) it will try /usr/bin/tesseract
 pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 
-# OpenAI API Key from secrets
+# OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Global buffer for accumulated prompt
+# Initialize accumulated prompt
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
+
+if "additional_prompt" not in st.session_state:
+    st.session_state.additional_prompt = ""
 
 # ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
@@ -57,7 +57,7 @@ def send_to_chatgpt():
         chat_response = response['choices'][0]['message']['content'].strip()
         st.markdown("**ChatGPT Response:**")
         st.text(chat_response)
-        st.session_state.accumulated_prompt = ""  # Clear buffer
+        st.session_state.accumulated_prompt = ""  # Clear buffer after sending
     except Exception as e:
         st.error(f"Error contacting ChatGPT: {e}")
 
@@ -70,7 +70,7 @@ def clear_all():
 # ---------------- STREAMLIT LAYOUT ----------------
 st.title("📸 OCR + ChatGPT Web App")
 
-# File uploader (multi)
+# File uploader
 uploaded_files = st.file_uploader(
     "Select images to OCR (PNG, JPG, JPEG, BMP, TIFF)",
     type=["png", "jpg", "jpeg", "bmp", "tiff"],

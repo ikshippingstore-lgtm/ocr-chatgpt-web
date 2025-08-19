@@ -5,38 +5,40 @@ import openai
 import io
 
 # ---------------- CONFIG ----------------
-# Initialize EasyOCR Reader once (CPU only for Streamlit Cloud)
-reader = easyocr.Reader(['en'], gpu=False)
-
 # OpenAI API key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Global accumulated prompt
+# Initialize EasyOCR reader
+reader = easyocr.Reader(['en'])
+
+# Initialize session state
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
+if "additional_prompt" not in st.session_state:
+    st.session_state.additional_prompt = ""
 
-# ---------------- HELPER FUNCTIONS ----------------
+# ---------------- IMAGE FUNCTIONS ----------------
 def resize_image(img, max_width=1000):
     """Resize image proportionally to max_width"""
     if img.width > max_width:
         w_percent = max_width / float(img.width)
         h_size = int(img.height * w_percent)
-        return img.resize((max_width, h_size), Image.ANTIALIAS)
+        return img.resize((max_width, h_size), Image.Resampling.LANCZOS)
     return img
 
 def ocr_image(img):
-    """Perform OCR using EasyOCR"""
+    """Perform OCR on PIL Image using EasyOCR"""
     img = resize_image(img)
-    try:
-        result = reader.readtext(np.array(img), detail=0)
-        return "\n".join(result)
-    except Exception as e:
-        return f"Error OCRing image: {e}"
+    img_bytes = io.BytesIO()
+    img.save(img_bytes, format='PNG')
+    img_bytes = img_bytes.getvalue()
+    result = reader.readtext(img_bytes, detail=0)
+    return "\n".join(result)
 
 def process_uploaded_images(uploaded_files):
     for uploaded_file in uploaded_files:
         try:
-            img = Image.open(uploaded_file).convert("RGB")
+            img = Image.open(uploaded_file)
             text = ocr_image(img)
             st.session_state.accumulated_prompt += text + "\n"
             st.markdown(f"**--- OCR for {uploaded_file.name} ---**")
@@ -44,6 +46,7 @@ def process_uploaded_images(uploaded_files):
         except Exception as e:
             st.error(f"Error processing {uploaded_file.name}: {e}")
 
+# ---------------- CHATGPT FUNCTION ----------------
 def send_to_chatgpt():
     additional_text = st.session_state.additional_prompt.strip()
     if additional_text:
@@ -64,30 +67,29 @@ def send_to_chatgpt():
         chat_response = response['choices'][0]['message']['content'].strip()
         st.markdown("**ChatGPT Response:**")
         st.text(chat_response)
-        st.session_state.accumulated_prompt = ""  # Clear buffer after sending
+        st.session_state.accumulated_prompt = ""  # Clear after sending
     except Exception as e:
         st.error(f"Error contacting ChatGPT: {e}")
 
+# ---------------- CLEAR FUNCTION ----------------
 def clear_all():
     st.session_state.accumulated_prompt = ""
     st.session_state.additional_prompt = ""
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App (Faster Online)")
+st.title("📸 OCR + ChatGPT Web App (EasyOCR)")
 
-# File uploader
+# File uploader (multi)
 uploaded_files = st.file_uploader(
     "Select images to OCR (PNG, JPG, JPEG, BMP, TIFF)",
     type=["png", "jpg", "jpeg", "bmp", "tiff"],
     accept_multiple_files=True
 )
-
 if uploaded_files:
-    with st.spinner("Processing images..."):
-        process_uploaded_images(uploaded_files)
+    process_uploaded_images(uploaded_files)
 
-# Additional prompt text
+# Additional prompt
 st.session_state.additional_prompt = st.text_area(
     "Add Text / Prompt Before Sending",
     value=st.session_state.get("additional_prompt", ""),
@@ -95,12 +97,10 @@ st.session_state.additional_prompt = st.text_area(
 )
 
 # Buttons
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 with col1:
     if st.button("Send to ChatGPT"):
         send_to_chatgpt()
 with col2:
     if st.button("Clear All"):
         clear_all()
-with col3:
-    st.write("")  # empty column for spacing

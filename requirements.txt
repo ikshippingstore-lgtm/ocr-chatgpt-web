@@ -1,4 +1,5 @@
 streamlit
+easyocr
 pillow
 openai
-pytesseract
+torch

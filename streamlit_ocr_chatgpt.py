@@ -2,10 +2,20 @@ import streamlit as st
 from PIL import Image
 import pytesseract
 import openai
+import tempfile
+import os
+import subprocess
 
 # ---------------- CONFIG ----------------
-# Use Tesseract on Streamlit Cloud
-# For Linux (Cloud) it will try /usr/bin/tesseract
+# Install Tesseract in Streamlit Cloud environment
+# (This runs once at app startup)
+try:
+    subprocess.run(["apt-get", "update"], check=True)
+    subprocess.run(["apt-get", "install", "-y", "tesseract-ocr"], check=True)
+except Exception as e:
+    st.warning(f"Could not install Tesseract automatically: {e}")
+
+# Set Tesseract path
 pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
 
 # OpenAI API key from Streamlit secrets
@@ -21,7 +31,8 @@ if "additional_prompt" not in st.session_state:
 # ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
     try:
-        return pytesseract.image_to_string(img)
+        text = pytesseract.image_to_string(img)
+        return text
     except Exception as e:
         return f"Error OCRing image: {e}"
 
@@ -65,10 +76,9 @@ def send_to_chatgpt():
 def clear_all():
     st.session_state.accumulated_prompt = ""
     st.session_state.additional_prompt = ""
-    st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App")
+st.title("📸 OCR + ChatGPT Web App (Cloud Only)")
 
 # File uploader
 uploaded_files = st.file_uploader(
@@ -82,7 +92,7 @@ if uploaded_files:
 # Additional prompt
 st.session_state.additional_prompt = st.text_area(
     "Add Text / Prompt Before Sending",
-    value=st.session_state.get("additional_prompt", ""),
+    value=st.session_state.additional_prompt,
     height=100
 )
 

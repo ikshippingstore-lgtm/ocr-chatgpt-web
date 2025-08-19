@@ -2,37 +2,27 @@ import streamlit as st
 from PIL import Image
 import pytesseract
 import openai
-import tempfile
 import os
-import subprocess
+import tempfile
 
 # ---------------- CONFIG ----------------
-# Install Tesseract in Streamlit Cloud environment
-# (This runs once at app startup)
-try:
-    subprocess.run(["apt-get", "update"], check=True)
-    subprocess.run(["apt-get", "install", "-y", "tesseract-ocr"], check=True)
-except Exception as e:
-    st.warning(f"Could not install Tesseract automatically: {e}")
+# Point pytesseract to the binary included in the repo
+TESSERACT_PATH = os.path.join(os.getcwd(), "tesseract_bin", "tesseract")
+pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
 
-# Set Tesseract path
-pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"
-
-# OpenAI API key from Streamlit secrets
+# OpenAI key from Streamlit secrets
 openai.api_key = st.secrets["OPENAI_API_KEY"]
 
-# Initialize accumulated prompt
+# Session state
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
-
 if "additional_prompt" not in st.session_state:
     st.session_state.additional_prompt = ""
 
 # ---------------- OCR FUNCTION ----------------
 def ocr_image(img):
     try:
-        text = pytesseract.image_to_string(img)
-        return text
+        return pytesseract.image_to_string(img)
     except Exception as e:
         return f"Error OCRing image: {e}"
 
@@ -76,11 +66,12 @@ def send_to_chatgpt():
 def clear_all():
     st.session_state.accumulated_prompt = ""
     st.session_state.additional_prompt = ""
+    st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App (Cloud Only)")
+st.title("📸 OCR + ChatGPT Web App")
 
-# File uploader
+# File uploader (multi)
 uploaded_files = st.file_uploader(
     "Select images to OCR (PNG, JPG, JPEG, BMP, TIFF)",
     type=["png", "jpg", "jpeg", "bmp", "tiff"],
@@ -92,15 +83,17 @@ if uploaded_files:
 # Additional prompt
 st.session_state.additional_prompt = st.text_area(
     "Add Text / Prompt Before Sending",
-    value=st.session_state.additional_prompt,
+    value=st.session_state.get("additional_prompt", ""),
     height=100
 )
 
 # Buttons
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 with col1:
     if st.button("Send to ChatGPT"):
         send_to_chatgpt()
 with col2:
     if st.button("Clear All"):
         clear_all()
+with col3:
+    st.write("")  # empty column for spacing

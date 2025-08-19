@@ -1,32 +1,42 @@
 import streamlit as st
 from PIL import Image
 import easyocr
+import numpy as np
 import openai
 
 # ---------------- CONFIG ----------------
-# OpenAI API key from Streamlit secrets
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-
-# Initialize EasyOCR reader
+# Initialize EasyOCR Reader (English)
 reader = easyocr.Reader(['en'], gpu=False)
 
-# Initialize session state
+# OpenAI API key from Streamlit Secrets
+openai.api_key = st.secrets["OPENAI_API_KEY"]
+
+# Session state buffers
 if "accumulated_prompt" not in st.session_state:
     st.session_state.accumulated_prompt = ""
 if "additional_prompt" not in st.session_state:
     st.session_state.additional_prompt = ""
 
 # ---------------- OCR FUNCTION ----------------
-def ocr_image(img):
+def ocr_image(img: Image.Image):
     try:
-        img_array = img.convert('RGB')
-        text_list = reader.readtext(np.array(img_array), detail=0)
+        # Convert to RGB
+        img = img.convert('RGB')
+
+        # Resize for faster OCR if image is wide
+        max_width = 800
+        if img.width > max_width:
+            ratio = max_width / img.width
+            new_size = (max_width, int(img.height * ratio))
+            img = img.resize(new_size)
+
+        # EasyOCR
+        text_list = reader.readtext(np.array(img), detail=0)
         return "\n".join(text_list)
     except Exception as e:
         return f"Error OCRing image: {e}"
 
 def process_uploaded_images(uploaded_files):
-    import numpy as np
     for uploaded_file in uploaded_files:
         try:
             img = Image.open(uploaded_file)
@@ -69,7 +79,7 @@ def clear_all():
     st.experimental_rerun()
 
 # ---------------- STREAMLIT LAYOUT ----------------
-st.title("📸 OCR + ChatGPT Web App (EasyOCR)")
+st.title("📸 OCR + ChatGPT Web App")
 
 # File uploader (multi)
 uploaded_files = st.file_uploader(
@@ -82,16 +92,4 @@ if uploaded_files:
 
 # Additional prompt
 st.session_state.additional_prompt = st.text_area(
-    "Add Text / Prompt Before Sending",
-    value=st.session_state.get("additional_prompt", ""),
-    height=100
-)
-
-# Buttons
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Send to ChatGPT"):
-        send_to_chatgpt()
-with col2:
-    if st.button("Clear All"):
-        clear_all()
+    "Add Text / Prompt Befor
